@@ -12,43 +12,6 @@
         android:layout_height="wrap_content"
         tools:ignore="RelativeOverlap" />
 
-    <ToggleButton
-        android:id="@+id/btn_config"
-        android:layout_width="48dp"
-        android:layout_height="wrap_content"
-        android:textOn="@string/str_close"
-        android:textOff="@string/str_open"
-        android:layout_alignParentEnd="true"
-        android:layout_marginEnd="20dp"
-        tools:ignore="RelativeOverlap" />
-
-    <LinearLayout
-        android:id="@+id/ll_configcontainer"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:layout_toStartOf="@id/btn_config">
-
-        <ImageButton
-            style="@android:style/Widget.Material.Light.Button.Borderless"
-            android:id="@+id/btn_setting"
-            android:layout_width="48dp"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:src="@drawable/img_setting"
-            android:contentDescription="@string/str_todo" />
-
-        <ImageButton
-            style="@android:style/Widget.Material.Light.Button.Borderless"
-            android:id="@+id/btn_settingaaa"
-            android:layout_width="48dp"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:src="@drawable/img_setting"
-            android:contentDescription="@string/str_todo" />
-
-    </LinearLayout>
-
     <ImageButton
         style="@android:style/Widget.Material.Light.Button.Borderless"
         android:id="@+id/btn_shutter"

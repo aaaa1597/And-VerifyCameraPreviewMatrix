@@ -161,26 +161,9 @@ public class MainFragment extends Fragment {
 
     @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
-        dbglogout("s ");
         super.onViewCreated(view, savedInstanceState);
         mTextureView = view.findViewById(R.id.tvw_preview);
         dbglogout(String.format(java.util.Locale.US, "aaaaa mTextureView-size %dx%d", mTextureView.getWidth(), mTextureView.getHeight()));
-
-        dbglogout(String.format(java.util.Locale.US, "aaaaa ExternalStoragePath=%s", Environment.getExternalStorageDirectory()));/* /storage/emulated/0 */
-        dbglogout(String.format(java.util.Locale.US, "TextureView -size (%d, %d) ", mTextureView.getWidth(), mTextureView.getHeight()));
-        view.findViewById(R.id.btn_shutter).setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                dbglogout("takePicture");
-                takePicture();
-            }
-        });
-
-        Activity activity = getActivity();
-        if(activity == null)
-            return;
-        mFile = new File(activity.getExternalFilesDir(null), "pic_aaaaa.jpg");
-        dbglogout("e ");
     }
 
     /**
