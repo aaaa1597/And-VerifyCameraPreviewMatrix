@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">And-OneShotCamera</string>
+    <string name="str_todo">TODO</string>
+    <string name="str_open"><![CDATA[<<]]></string>
+    <string name="str_close"><![CDATA[>>]]></string>
+    <string name="request_permission">This app needs camera permission.\n\nQuit the this app.</string>
+    <string name="camera_error">This device doesn\'t support Camera2 API.</string>
+    <string name="str_illigal_state">It became an illigal state inside the app.</string>
+</resources>

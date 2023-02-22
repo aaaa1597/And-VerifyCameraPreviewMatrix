@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#8888fffe"
+    tools:context=".MainFragment">
+
+    <com.tks.oneshotcamera.AutoFitTextureView
+        android:id="@+id/tvw_preview"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        tools:ignore="RelativeOverlap" />
+
+    <ToggleButton
+        android:id="@+id/btn_config"
+        android:layout_width="48dp"
+        android:layout_height="wrap_content"
+        android:textOn="@string/str_close"
+        android:textOff="@string/str_open"
+        android:layout_alignParentEnd="true"
+        android:layout_marginEnd="20dp"
+        tools:ignore="RelativeOverlap" />
+
+    <LinearLayout
+        android:id="@+id/ll_configcontainer"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_toStartOf="@id/btn_config">
+
+        <ImageButton
+            style="@android:style/Widget.Material.Light.Button.Borderless"
+            android:id="@+id/btn_setting"
+            android:layout_width="48dp"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:src="@drawable/img_setting"
+            android:contentDescription="@string/str_todo" />
+
+        <ImageButton
+            style="@android:style/Widget.Material.Light.Button.Borderless"
+            android:id="@+id/btn_settingaaa"
+            android:layout_width="48dp"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:src="@drawable/img_setting"
+            android:contentDescription="@string/str_todo" />
+
+    </LinearLayout>
+
+    <ImageButton
+        style="@android:style/Widget.Material.Light.Button.Borderless"
+        android:id="@+id/btn_shutter"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:src="@drawable/img_shutter"
+        android:layout_alignParentBottom="true"
+        android:layout_alignParentStart="true"
+        android:layout_alignParentEnd="true"
+        android:contentDescription="@string/str_todo" />
+
+</RelativeLayout>
