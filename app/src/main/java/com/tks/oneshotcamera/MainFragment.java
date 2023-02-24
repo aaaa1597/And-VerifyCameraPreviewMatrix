@@ -387,7 +387,7 @@ public class MainFragment extends Fragment {
 
                 /* Finally, we start displaying the camera preview. */
                 mPreviewRequestforStartCameraPreview = mPreviewRequestBuilder.build();
-                mCaptureSession.setRepeatingRequest(mPreviewRequestforStartCameraPreview, mCaptureCallback, mBackgroundHandler);
+                mCaptureSession.setRepeatingRequest(mPreviewRequestforStartCameraPreview, null, mBackgroundHandler);
             }
             catch (CameraAccessException e) {
                 /* 異常が発生したら、例外吐いて終了 */
@@ -396,72 +396,6 @@ public class MainFragment extends Fragment {
         }
 
         @Override public void onConfigureFailed(@NonNull CameraCaptureSession session) { /* 異常が発生したら、例外吐いて終了 */ throw new RuntimeException(session.toString()); }
-    };
-
-    /***************************************************************************************************************************************************
-     * Previewキャプチャ中シーケンス
-     * CaptureCallback::onCaptureProgressed()
-     **************************************************************************************************************************************************/
-    private int mState = STATE_PREVIEW;
-    private static final int STATE_PREVIEW                = 0;
-    private static final int STATE_WAITING_LOCK           = 1;
-    private static final int STATE_WAITING_PRECAPTURE     = 2;
-    private static final int STATE_WAITING_NON_PRECAPTURE = 3;
-    private static final int STATE_PICTURE_TAKEN          = 4;
-    private CameraCaptureSession.CaptureCallback mCaptureCallback = new CameraCaptureSession.CaptureCallback() {
-        private void process(CaptureResult result) {
-            switch (mState) {
-                // We have nothing to do when the camera preview is working normally.
-                case STATE_PREVIEW: {
-                    break;
-                }
-//                case STATE_WAITING_LOCK: {
-//                    Integer afState = result.get(CaptureResult.CONTROL_AF_STATE);
-//                    if (afState == null) {
-//                        captureStillPicture();
-//                    }
-//                    // CONTROL_AE_STATE can be null on some devices
-//                    else if (CaptureResult.CONTROL_AF_STATE_FOCUSED_LOCKED == afState || CaptureResult.CONTROL_AF_STATE_NOT_FOCUSED_LOCKED == afState) {
-//                        Integer aeState = result.get(CaptureResult.CONTROL_AE_STATE);
-//                        if (aeState == null || aeState == CaptureResult.CONTROL_AE_STATE_CONVERGED) {
-//                            mState = STATE_PICTURE_TAKEN;
-//                            captureStillPicture();
-//                        }
-//                        else {
-//                            runPrecaptureSequence();
-//                        }
-//                    }
-//                    break;
-//                }
-//                // CONTROL_AE_STATE can be null on some devices
-//                case STATE_WAITING_PRECAPTURE: {
-//                    Integer aeState = result.get(CaptureResult.CONTROL_AE_STATE);
-//                    if (aeState == null || aeState == CaptureResult.CONTROL_AE_STATE_PRECAPTURE || aeState == CaptureRequest.CONTROL_AE_STATE_FLASH_REQUIRED) {
-//                        mState = STATE_WAITING_NON_PRECAPTURE;
-//                    }
-//                    break;
-//                }
-//                // CONTROL_AE_STATE can be null on some devices
-//                case STATE_WAITING_NON_PRECAPTURE: {
-//                    Integer aeState = result.get(CaptureResult.CONTROL_AE_STATE);
-//                    if (aeState == null || aeState != CaptureResult.CONTROL_AE_STATE_PRECAPTURE) {
-//                        mState = STATE_PICTURE_TAKEN;
-//                        captureStillPicture();
-//                    }
-//                    break;
-//                }
-            }
-        }
-
-        @Override
-        public void onCaptureProgressed(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull CaptureResult partialResult) {
-            process(partialResult);
-        }
-
-        @Override
-        public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
-            process(result);
-        }
     };
 
     /* CaptureCallback::onCaptureProgressed() -> */
