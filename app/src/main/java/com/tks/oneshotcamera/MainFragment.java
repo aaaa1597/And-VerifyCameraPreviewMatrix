@@ -164,7 +164,7 @@ public class MainFragment extends Fragment {
             mTextureView.setTransform(matrix);
 //            dbglogout(String.format("aaaaa(353)onResume() TextureView::setAspectRatio(%s, %s)", textureViewSize.getWidth(), textureViewSize.getHeight()));
             dbglogout(String.format("aaaaa(354)onResume() TextureView-size(%d, %d)", mTextureView.getMeasuredWidth(), mTextureView.getMeasuredHeight()));
-            openCamera(mViewModel.getCameraId(), suitableSize.getWidth(), suitableSize.getHeight());
+            openCamera(mViewModel.getCameraId());
         }
         else {
             mTextureView.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
@@ -181,7 +181,7 @@ public class MainFragment extends Fragment {
                     mTextureView.setTransform(matrix);
 //                    dbglogout(String.format("aaaaa(364)onResume() TextureView::setAspectRatio(%s, %s)", textureViewSize.getWidth(), textureViewSize.getHeight()));
                     dbglogout(String.format("aaaaa(365)onResume() TextureView-size(%d, %d)", mTextureView.getMeasuredWidth(), mTextureView.getMeasuredHeight()));
-                    openCamera(mViewModel.getCameraId(), suitableSize.getWidth(), suitableSize.getHeight());
+                    openCamera(mViewModel.getCameraId());
                 }
 
                 @Override public void onSurfaceTextureSizeChanged(@NonNull SurfaceTexture surface, int width, int height) {}
@@ -245,9 +245,7 @@ public class MainFragment extends Fragment {
 
     /* onResume() -> [onSurfaceTextureAvailable()] -> openCamera() -> CameraManager::openCamera() -> onOpened() */
     /*                                                ↑ ココ                                                   */
-    private void openCamera(String cameraid, int width, int height) {
-        dbglogout(String.format("aaaaa openCamera() %d x %d[%f]", width, height, ((double)width)/height));
-
+    private void openCamera(String cameraid) {
         /* Camera Open */
         CameraManager manager = (CameraManager)mAtivity.getSystemService(Context.CAMERA_SERVICE);
         try {
