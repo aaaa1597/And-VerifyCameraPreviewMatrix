@@ -50,6 +50,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -145,14 +146,23 @@ public class MainFragment extends Fragment {
         int ScreenHeight= (isLandscape) ? windowMetrics.getBounds().height(): windowMetrics.getBounds().width();
 //        ScreenWidth = 1920;
 //        ScreenHeight= 1080;
-        dbglogout(String.format("aaaaa(264)onResume() ScreenSize(%s, %s)", ScreenWidth, ScreenHeight));
         Size suitableSize = getSuitablePreviewSize(mViewModel.getSupportedCameraSizes(), new Size(ScreenWidth, ScreenHeight));
         Size textureViewSize = (isLandscape) ? new Size(suitableSize.getWidth(),suitableSize.getHeight()) : new Size(suitableSize.getHeight(),suitableSize.getWidth());
+//        dbglogout(String.format("aaaaa(264)onResume() 画面Size(%s, %s) 最適PreviewSize(%s, %s) TextureViewSize(%s, %s)", ScreenWidth, ScreenHeight, suitableSize.getWidth(), suitableSize.getHeight(), textureViewSize.getWidth(), textureViewSize.getHeight()));
+        dbglogout(String.format("aaaaa(264)onResume() 画面Size(%s, %s) 最適PreviewSize(%s, %s) TextureViewSize(%s, %s)", ScreenWidth, ScreenHeight, suitableSize.getWidth(), suitableSize.getHeight(), mTextureView.getMeasuredWidth(), mTextureView.getMeasuredHeight()));
 
         if(mTextureView.isAvailable()) {
-            /* 画面サイズとCameraサイズsから最適Previewサイズを求める */
-            mTextureView.setAspectRatio(textureViewSize.getWidth(), textureViewSize.getHeight());
-            dbglogout(String.format("aaaaa(353)onResume() TextureView::setAspectRatio(%s, %s)", textureViewSize.getWidth(), textureViewSize.getHeight()));
+//            /* 画面サイズとCameraサイズsから最適Previewサイズを求める */
+//            mTextureView.setAspectRatio(textureViewSize.getWidth(), textureViewSize.getHeight());
+
+            /* Previewサイズのゆがみ補正行列 */
+            float screenAdpect  = ((float)ScreenWidth)/ScreenHeight;
+            float suitableAdpect= ((float)suitableSize.getWidth())/suitableSize.getHeight();
+            dbglogout(String.format(Locale.JAPAN, "aaaaa(264)onResume() 画面アスペクト比(%f) 最適Previewアスペクト比(%f)", screenAdpect, suitableAdpect));
+            Matrix matrix = new Matrix();
+            matrix.setScale(screenAdpect/suitableAdpect, 1);  /* sony縦OK */
+            mTextureView.setTransform(matrix);
+//            dbglogout(String.format("aaaaa(353)onResume() TextureView::setAspectRatio(%s, %s)", textureViewSize.getWidth(), textureViewSize.getHeight()));
             dbglogout(String.format("aaaaa(354)onResume() TextureView-size(%d, %d)", mTextureView.getMeasuredWidth(), mTextureView.getMeasuredHeight()));
             openCamera(mViewModel.getCameraId(), suitableSize.getWidth(), suitableSize.getHeight());
         }
@@ -161,8 +171,15 @@ public class MainFragment extends Fragment {
                 @Override
                 public void onSurfaceTextureAvailable(@NonNull SurfaceTexture surface, int width, int height) {
                     Size picturesize = mViewModel.getCurrentResolutionSize();
-                    mTextureView.setAspectRatio(textureViewSize.getWidth(), textureViewSize.getHeight());
-                    dbglogout(String.format("aaaaa(364)onResume() TextureView::setAspectRatio(%s, %s)", textureViewSize.getWidth(), textureViewSize.getHeight()));
+//                    mTextureView.setAspectRatio(textureViewSize.getWidth(), textureViewSize.getHeight());
+                    /* Previewサイズのゆがみ補正行列 */
+                    float screenAdpect  = ((float)ScreenWidth)/ScreenHeight;
+                    float suitableAdpect= ((float)suitableSize.getWidth())/suitableSize.getHeight();
+                    dbglogout(String.format(Locale.JAPAN, "aaaaa(264)onResume() 画面アスペクト比(%f) 最適Previewアスペクト比(%f)", screenAdpect, suitableAdpect));
+                    Matrix matrix = new Matrix();
+                    matrix.setScale(screenAdpect/suitableAdpect, 1);  /* sony縦OK */
+                    mTextureView.setTransform(matrix);
+//                    dbglogout(String.format("aaaaa(364)onResume() TextureView::setAspectRatio(%s, %s)", textureViewSize.getWidth(), textureViewSize.getHeight()));
                     dbglogout(String.format("aaaaa(365)onResume() TextureView-size(%d, %d)", mTextureView.getMeasuredWidth(), mTextureView.getMeasuredHeight()));
                     openCamera(mViewModel.getCameraId(), suitableSize.getWidth(), suitableSize.getHeight());
                 }
@@ -221,57 +238,6 @@ public class MainFragment extends Fragment {
 
             return Double.compare(o1Feature, o2Feature);
         }).get();
-
-        /* TODO 削除予定 試しコード ここから */
-        List<Size> aaaaa = Arrays.stream(mViewModel.getSupportedCameraSizes()).sorted(new Comparator<Size>() {
-            @Override
-            public int compare(Size o1, Size o2) {
-                /* 面積正規化 */
-                double baseAreaNorm= baseArea / (((double)maxPreviewSzie.getWidth())*maxPreviewSzie.getHeight());
-                double o1AreaNorm  = (((double)o1.getWidth())*o1.getHeight()) / (((double)maxPreviewSzie.getWidth())*maxPreviewSzie.getHeight());
-                double o2AreaNorm  = (((double)o2.getWidth())*o2.getHeight()) / (((double)maxPreviewSzie.getWidth())*maxPreviewSzie.getHeight());
-
-                /* アスペクト比正規化 */
-                double baseAspectNorm= baseAspect / maxAspect;
-                double o1AspectNorm  = (((double)o1.getWidth())/o1.getHeight()) / maxAspect;
-                double o2AspectNorm  = (((double)o2.getWidth())/o2.getHeight()) / maxAspect;
-
-                /* o1 */
-                double o1AreaDiff     = o1AreaNorm   - baseAreaNorm;                        /* 面積差分 */
-                double o1AspectDiff   = o1AspectNorm - baseAspectNorm;                      /* アスペクト比差分 */
-                double o1MoreLargeDiff= (o1.getWidth()*o1.getHeight()== baseArea) ? 0.0 :
-                        (o1.getWidth()*o1.getHeight() < baseArea) ? 0.2 : 0.1;/* 基準サイズより大きい方を優位にする(小さい方に加算) */
-
-                /* o2 */
-                double o2AreaDiff     = o2AreaNorm   - baseAreaNorm;                        /* 面積差分 */
-                double o2AspectDiff   = o2AspectNorm - baseAspectNorm;                      /* アスペクト比差分 */
-                double o2MoreLargeDiff= (o2.getWidth()*o2.getHeight()== baseArea) ? 0.0 :
-                        (o2.getWidth()*o2.getHeight() < baseArea) ? 0.2 : 0.1;/* 基準サイズより大きい方を優位にする(小さい方に加算) */
-
-                /* 特徴を一元化 */
-                double o1Feature = Math.abs(o1AreaDiff) + Math.abs(o1AspectDiff) + Math.abs(o1MoreLargeDiff);
-                double o2Feature = Math.abs(o2AreaDiff) + Math.abs(o2AspectDiff) + Math.abs(o2MoreLargeDiff);
-
-//                String log0 = String.format(Locale.JAPAN, "ret=%2d[%f{%f + %f + %f}, %f{%f + %f + %f}] | ", Double.compare(o2Feature, o1Feature), o1Feature, Math.abs(o1AreaDiff), Math.abs(o1AspectDiff), Math.abs(o1MoreLargeDiff), o2Feature, Math.abs(o2AreaDiff), Math.abs(o2AspectDiff), Math.abs(o2MoreLargeDiff));
-//                String log1 = String.format(Locale.JAPAN, "(%4d x %4d[%f](%8d)) | ", baseSize.getWidth(), baseSize.getHeight(), ((double)baseSize.getWidth())/baseSize.getHeight(), ((long)baseSize.getWidth())*baseSize.getHeight());
-//                String log2 = String.format(Locale.JAPAN, "::(%4d x %4d[%f](%8d)) ",   o1.getWidth(), o1.getHeight(), ((double)o1.getWidth())/o1.getHeight(), ((long)o1.getWidth())*o1.getHeight());
-//                String log3 = String.format(Locale.JAPAN, "(%4d x %4d[%f](%8d)) | ", o2.getWidth(), o2.getHeight(), ((double)o2.getWidth())/o2.getHeight(), ((long)o2.getWidth())*o2.getHeight());
-//                String log4 = String.format(Locale.JAPAN, "o1-大::%f[%f{%d x %d / %d x %d}-%f{%d x %d / %d x %d}]", Math.abs(o1AreaDiff), o1AreaNorm, o1.getWidth(),o1.getHeight(),maxPreviewSzie.getWidth(),maxPreviewSzie.getHeight(), baseAreaNorm, baseSize.getWidth(), baseSize.getHeight(), maxPreviewSzie.getWidth(),maxPreviewSzie.getHeight());
-//                String log5 = String.format(Locale.JAPAN, "o2-大::%f[%f{%d x %d / %d x %d}-%f{%d x %d / %d x %d}]", Math.abs(o2AreaDiff), o2AreaNorm, o2.getWidth(),o2.getHeight(),maxPreviewSzie.getWidth(),maxPreviewSzie.getHeight(), baseAreaNorm, baseSize.getWidth(), baseSize.getHeight(), maxPreviewSzie.getWidth(),maxPreviewSzie.getHeight());
-//                String log6 = String.format(Locale.JAPAN, "o1-比::%f[%f{(%d / %d) / (%d / %d )} - %f{(%d / %d) / (%d / %d )}]", Math.abs(o1AspectDiff), o1AspectNorm, o1.getWidth(),o1.getHeight(),maxAspectSize.getWidth(),maxAspectSize.getHeight(), baseAspectNorm, baseSize.getWidth(),baseSize.getHeight(),maxAspectSize.getWidth(),maxAspectSize.getHeight());
-//                String log7 = String.format(Locale.JAPAN, "o2-比::%f[%f{(%d / %d) / (%d / %d )} - %f{(%d / %d) / (%d / %d )}]", Math.abs(o2AspectDiff), o2AspectNorm, o2.getWidth(),o2.getHeight(),maxAspectSize.getWidth(),maxAspectSize.getHeight(), baseAspectNorm, baseSize.getWidth(),baseSize.getHeight(),maxAspectSize.getWidth(),maxAspectSize.getHeight());
-//                String log8 = String.format(Locale.JAPAN, "o1-↑::%f", Math.abs(o1MoreLargeDiff));
-//                String log9 = String.format(Locale.JAPAN, "o2-↑::%f", Math.abs(o2MoreLargeDiff));
-//                Log.d("aaaaa",  String.format("%s %s %s %s", log0, log1, log2, log3));
-//                Log.d("aaaaa",  String.format("%s %s %s", log4, log6, log8));
-//                Log.d("aaaaa",  String.format("%s %s %s", log5, log7, log9));
-//                Log.d("aaaaa",  "------------------------------------------------");
-                return Double.compare(o1Feature, o2Feature);
-            }
-        }).collect(Collectors.toList());
-        for(Size aa : aaaaa)
-            Log.d("aaaaa",  String.format("aaaaa 並び替えがちゃんと出来ているか?(%d x %d[%f]) --- %d x %d[%f]", baseSize.getWidth(), baseSize.getHeight(), ((double)baseSize.getWidth())/baseSize.getHeight(), aa.getWidth(), aa.getHeight(), ((double)aa.getWidth())/aa.getHeight()) );
-        /* TODO 削除予定 試しコード ここまで */
 
         Log.d("aaaaa",  String.format("aaaaa ちゃんとれたか？483 (%d x %d[%f])", suitableCameraPreviewSize.getWidth(), suitableCameraPreviewSize.getHeight(), ((double)suitableCameraPreviewSize.getWidth())/suitableCameraPreviewSize.getHeight()) );
         return suitableCameraPreviewSize;
