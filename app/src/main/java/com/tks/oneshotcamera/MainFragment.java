@@ -3,17 +3,15 @@ package com.tks.oneshotcamera;
 import androidx.appcompat.app.AlertDialog;
 import androidx.core.app.ActivityCompat;
 import androidx.fragment.app.DialogFragment;
+import androidx.fragment.app.FragmentActivity;
 import androidx.lifecycle.ViewModelProvider;
 
 import android.app.Activity;
 import android.app.Dialog;
-import android.content.ContentResolver;
-import android.content.ContentValues;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
-import android.graphics.ImageFormat;
 import android.graphics.Matrix;
 import android.graphics.Point;
 import android.graphics.RectF;
@@ -23,106 +21,116 @@ import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
-import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
+import android.hardware.camera2.params.OutputConfiguration;
+import android.hardware.camera2.params.SessionConfiguration;
 import android.hardware.camera2.params.StreamConfigurationMap;
-import android.media.Image;
-import android.media.ImageReader;
-import android.net.Uri;
 import android.os.Bundle;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 
-import android.os.Environment;
 import android.os.Handler;
 import android.os.HandlerThread;
-import android.provider.MediaStore;
 import android.util.Log;
 import android.util.Size;
-import android.util.SparseIntArray;
 import android.view.LayoutInflater;
 import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowMetrics;
 import android.widget.Toast;
 
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.Date;
 import java.util.List;
-import java.util.Locale;
-import java.util.TimeZone;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 public class MainFragment extends Fragment {
-    private AutoFitTextureView mTextureView;
-    private HandlerThread mBackgroundThread;
-    private Handler mBackgroundHandler;
+    private FragmentActivity mAtivity;
+    private MainViewModel mViewModel;
     private final Semaphore mCameraOpenCloseSemaphore = new Semaphore(1);
-    private static final int MAX_PREVIEW_WIDTH = 1920;
-    private static final int MAX_PREVIEW_HEIGHT = 1080;
-    private Size mPreviewSize;
-    private boolean mFlashSupported;
-    private String mCameraId;
-    private CameraDevice mCameraDevice;
-    private CaptureRequest.Builder mPreviewRequestBuilder;
     private CameraCaptureSession mCaptureSession;
-    private CaptureRequest mPreviewRequest;
+
+    /* 絞りを開ける=f値小, 光がたくさん, 被写界深度-浅, 背景がボケる。被写体を浮き立たせる効果がある。シャッター速度が速くなるため手ブレしにくくなる。 */
+    /* 絞りを絞る　=f値大, 光が少し　　, 被写界深度-深, 画面全部にピントが合う。 */
+
     public static MainFragment newInstance() {
-        dbglogout("");
         return new MainFragment();
     }
 
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
-        dbglogout("");
         return inflater.inflate(R.layout.fragment_main, container, false);
     }
 
+    /*******************************
+     * MainFragment::onViewCreated()
+     *******************************/
     @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
+
+        /* メンバ初期化 */
+        mAtivity = getActivity();
+        if(mAtivity == null) throw new RuntimeException("Error occurred!! illigal state in this app. activity is null!!");
         mTextureView = view.findViewById(R.id.tvw_preview);
-        dbglogout(String.format(java.util.Locale.US, "aaaaa mTextureView-size %dx%d", mTextureView.getWidth(), mTextureView.getHeight()));
-    }
+        mViewModel = new ViewModelProvider(requireActivity()).get(MainViewModel.class);
 
-    /**
-     * Lock the focus as the first step for a still image capture.
-     */
-    private void takePicture() {
-        dbglogout("takePicture s");
+        dbglogout(String.format("aaaaa onViewCreated() mTextureView.Size s (%d x %d[%f])", mTextureView.getWidth(), mTextureView.getHeight(), ((double)mTextureView.getWidth())/mTextureView.getHeight()) );
+
+        /* カメラデバイスIDの確定と、そのCameraがサポートしている解像度リストを取得 */
+        CameraManager manager = (CameraManager)mAtivity.getSystemService(Context.CAMERA_SERVICE);
         try {
-            /* This is how to tell the camera to lock focus. */
-            mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_START);
-            /* Tell #mCaptureCallback to wait for the lock. */
-            dbglogout("takePicture capture(af-start) mCaptureCallback");
-            mCaptureSession.capture(mPreviewRequestBuilder.build(), null, null);
+            for(String cameraId : manager.getCameraIdList()) {
+                CameraCharacteristics characteristics = manager.getCameraCharacteristics(cameraId);
+                /* フロントカメラは対象外 */
+                Integer facing = characteristics.get(CameraCharacteristics.LENS_FACING);
+                if(facing != null && facing == CameraCharacteristics.LENS_FACING_FRONT)
+                    continue;
+
+                /* streamConfig mapが取れなければ対象外 */
+                StreamConfigurationMap map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+                if(map == null)
+                    continue;
+
+                Boolean flashavailable = characteristics.get(CameraCharacteristics.FLASH_INFO_AVAILABLE);
+
+                mViewModel.setCameraId(cameraId);
+                mViewModel.setSupportedCameraSizes(map.getOutputSizes(SurfaceTexture.class));
+                mViewModel.setFlashSupported((flashavailable == null) ? false : flashavailable);
+                break;
+            }
         }
-        catch (CameraAccessException e) {
-            e.printStackTrace();
+        catch(CameraAccessException e) {
+            Log.d("aaaaa", e.toString());
+            throw new RuntimeException("Error!! Camera is illigal state!!");
         }
-        dbglogout("takePicture e");
+
     }
 
+    /*******************************************************************************************************
+     * Handler初期化,TextureView初期化シーケンス
+     * onResume() -> [onSurfaceTextureAvailable()] -> openCamera() CameraManager::openCamera() -> onOpened()
+     *******************************************************************************************************/
+    private AutoFitTextureView mTextureView;
+    private HandlerThread mBackgroundThread;
+    private Handler mBackgroundHandler;
+    private CameraDevice mCameraDevice;
+
+    /* onResume() -> [onSurfaceTextureAvailable()] -> openCamera() CameraManager::openCamera() -> onOpened() */
+    /* ↑ココ                                                                                                  */
     @Override
     public void onResume() {
         super.onResume();
-
         dbglogout(String.format(java.util.Locale.US, "aaaaa onResume() TextureView-size (%d, %d) ", mTextureView.getWidth(), mTextureView.getHeight()));
 
         /* start Handler */
@@ -130,36 +138,343 @@ public class MainFragment extends Fragment {
         mBackgroundThread.start();
         mBackgroundHandler = new Handler(mBackgroundThread.getLooper());
 
-        /* Set the TextureView */
-        if( !mTextureView.isAvailable()) {
-            /* Set Listener to TextureView */
+        /* TexureViewサイズとCameraPreviewサイズを求める準備 */
+        WindowMetrics windowMetrics = mAtivity.getWindowManager().getCurrentWindowMetrics();
+        boolean isLandscape = getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
+        int ScreenWidth = (isLandscape) ? windowMetrics.getBounds().width() : windowMetrics.getBounds().height();
+        int ScreenHeight= (isLandscape) ? windowMetrics.getBounds().height(): windowMetrics.getBounds().width();
+//        ScreenWidth = 1920;
+//        ScreenHeight= 1080;
+        dbglogout(String.format("aaaaa(264)onResume() ScreenSize(%s, %s)", ScreenWidth, ScreenHeight));
+        Size suitableSize = getSuitablePreviewSize(mViewModel.getSupportedCameraSizes(), new Size(ScreenWidth, ScreenHeight));
+        Size textureViewSize = (isLandscape) ? new Size(suitableSize.getWidth(),suitableSize.getHeight()) : new Size(suitableSize.getHeight(),suitableSize.getWidth());
+
+        if(mTextureView.isAvailable()) {
+            /* 画面サイズとCameraサイズsから最適Previewサイズを求める */
+            mTextureView.setAspectRatio(textureViewSize.getWidth(), textureViewSize.getHeight());
+            dbglogout(String.format("aaaaa(353)onResume() TextureView::setAspectRatio(%s, %s)", textureViewSize.getWidth(), textureViewSize.getHeight()));
+            dbglogout(String.format("aaaaa(354)onResume() TextureView-size(%d, %d)", mTextureView.getMeasuredWidth(), mTextureView.getMeasuredHeight()));
+            openCamera(mViewModel.getCameraId(), suitableSize.getWidth(), suitableSize.getHeight());
+        }
+        else {
             mTextureView.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
                 @Override
                 public void onSurfaceTextureAvailable(@NonNull SurfaceTexture surface, int width, int height) {
-                    dbglogout(String.format(java.util.Locale.US, "aaaaa  onSurfaceTextureAvailable() TextureView-size (%d, %d)==(%d, %d)", mTextureView.getWidth(), mTextureView.getHeight(), width, height));
-                    openCamera(width, height);
+                    Size picturesize = mViewModel.getCurrentResolutionSize();
+                    mTextureView.setAspectRatio(textureViewSize.getWidth(), textureViewSize.getHeight());
+                    dbglogout(String.format("aaaaa(364)onResume() TextureView::setAspectRatio(%s, %s)", textureViewSize.getWidth(), textureViewSize.getHeight()));
+                    dbglogout(String.format("aaaaa(365)onResume() TextureView-size(%d, %d)", mTextureView.getMeasuredWidth(), mTextureView.getMeasuredHeight()));
+                    openCamera(mViewModel.getCameraId(), suitableSize.getWidth(), suitableSize.getHeight());
                 }
 
-                @Override
-                public void onSurfaceTextureSizeChanged(@NonNull SurfaceTexture surface, int width, int height) {
-                    dbglogout(String.format(java.util.Locale.US, "aaaaa onSurfaceTextureSizeChanged() TextureView-size (%d, %d)!=(%d, %d)???", mTextureView.getWidth(), mTextureView.getHeight(), width, height));
-                    configureTransform(width, height);
-                }
-
-                @Override public boolean onSurfaceTextureDestroyed(@NonNull SurfaceTexture surface) { return true; }
+                @Override public void onSurfaceTextureSizeChanged(@NonNull SurfaceTexture surface, int width, int height) {}
                 @Override public void onSurfaceTextureUpdated(@NonNull SurfaceTexture surface) {}
+                @Override public boolean onSurfaceTextureDestroyed(@NonNull SurfaceTexture surface) {
+                    return false;
+                }
             });
         }
-        else {
-            dbglogout(String.format(java.util.Locale.US, "aaaaa TextureView-size %dx%d", mTextureView.getWidth(), mTextureView.getHeight()));
-            openCamera(mTextureView.getWidth(), mTextureView.getHeight());
-        }
-        dbglogout("e ");
     }
 
+    private Size getSuitablePreviewSize(Size[] supportedCameraSizes, Size baseSize) {
+        /* baseサイズを求める */
+        double baseArea  = ((double)baseSize.getWidth())*baseSize.getHeight();
+        double baseAspect= ((double)baseSize.getWidth())/baseSize.getHeight();
+        Log.d("aaaaa", String.format("aaaaa argSize=%s", baseSize));
+
+        /* 正規化用パラメータを求める */
+        Size maxPreviewSzie= Arrays.stream(supportedCameraSizes).max((o1, o2) -> {return o1.getWidth()*o1.getHeight() - o2.getWidth()*o2.getHeight();}).get();
+        Size maxAspectSize = Arrays.stream(supportedCameraSizes).max((o1, o2) -> {return Double.compare(((double)o1.getWidth())/o1.getHeight(), ((double)o2.getWidth())/o2.getHeight());}).get();
+        double maxAspect = ((double)maxAspectSize.getWidth()) / maxAspectSize.getHeight();
+
+        Size suitableCameraPreviewSize = Arrays.stream(supportedCameraSizes).min((o1, o2) -> {
+            if(o1.getWidth()== 1920 && o1.getHeight()== 1080)
+                Log.d("aaaaa", "AAAAA");
+            else if(o1.getWidth()== 1080 && o1.getHeight()== 1920)
+                Log.d("aaaaa", "AAAAA");
+
+            /* 面積正規化 */
+            double baseAreaNorm= baseArea / (((double)maxPreviewSzie.getWidth())*maxPreviewSzie.getHeight());
+            double o1AreaNorm  = (((double)o1.getWidth())*o1.getHeight()) / (((double)maxPreviewSzie.getWidth())*maxPreviewSzie.getHeight());
+            double o2AreaNorm  = (((double)o2.getWidth())*o2.getHeight()) / (((double)maxPreviewSzie.getWidth())*maxPreviewSzie.getHeight());
+
+            /* アスペクト比正規化 */
+            double baseAspectNorm= baseAspect / maxAspect;
+            double o1AspectNorm  = (((double)o1.getWidth())/o1.getHeight()) / maxAspect;
+            double o2AspectNorm  = (((double)o2.getWidth())/o2.getHeight()) / maxAspect;
+
+            /* o1 */
+            double o1AreaDiff     = o1AreaNorm   - baseAreaNorm;                        /* 面積差分 */
+            double o1AspectDiff   = o1AspectNorm - baseAspectNorm;                      /* アスペクト比差分 */
+            double o1MoreLargeDiff= (o1.getWidth()*o1.getHeight()== baseArea) ? 0.0 :
+                                    (o1.getWidth()*o1.getHeight() < baseArea) ? 0.2 : 0.1;/* 基準サイズより大きい方を優位にする(小さい方に加算) */
+
+            /* o2 */
+            double o2AreaDiff     = o2AreaNorm   - baseAreaNorm;                        /* 面積差分 */
+            double o2AspectDiff   = o2AspectNorm - baseAspectNorm;                      /* アスペクト比差分 */
+            double o2MoreLargeDiff= (o2.getWidth()*o2.getHeight()== baseArea) ? 0.0 :
+                                    (o2.getWidth()*o2.getHeight() < baseArea) ? 0.2 : 0.1;/* 基準サイズより大きい方を優位にする(小さい方に加算) */
+
+            /* 特徴を一元化 */
+            double o1Feature = Math.abs(o1AreaDiff) + Math.abs(o1AspectDiff) + Math.abs(o1MoreLargeDiff);
+            double o2Feature = Math.abs(o2AreaDiff) + Math.abs(o2AspectDiff) + Math.abs(o2MoreLargeDiff);
+
+            return Double.compare(o1Feature, o2Feature);
+        }).get();
+
+        /* TODO 削除予定 試しコード ここから */
+        List<Size> aaaaa = Arrays.stream(mViewModel.getSupportedCameraSizes()).sorted(new Comparator<Size>() {
+            @Override
+            public int compare(Size o1, Size o2) {
+                /* 面積正規化 */
+                double baseAreaNorm= baseArea / (((double)maxPreviewSzie.getWidth())*maxPreviewSzie.getHeight());
+                double o1AreaNorm  = (((double)o1.getWidth())*o1.getHeight()) / (((double)maxPreviewSzie.getWidth())*maxPreviewSzie.getHeight());
+                double o2AreaNorm  = (((double)o2.getWidth())*o2.getHeight()) / (((double)maxPreviewSzie.getWidth())*maxPreviewSzie.getHeight());
+
+                /* アスペクト比正規化 */
+                double baseAspectNorm= baseAspect / maxAspect;
+                double o1AspectNorm  = (((double)o1.getWidth())/o1.getHeight()) / maxAspect;
+                double o2AspectNorm  = (((double)o2.getWidth())/o2.getHeight()) / maxAspect;
+
+                /* o1 */
+                double o1AreaDiff     = o1AreaNorm   - baseAreaNorm;                        /* 面積差分 */
+                double o1AspectDiff   = o1AspectNorm - baseAspectNorm;                      /* アスペクト比差分 */
+                double o1MoreLargeDiff= (o1.getWidth()*o1.getHeight()== baseArea) ? 0.0 :
+                        (o1.getWidth()*o1.getHeight() < baseArea) ? 0.2 : 0.1;/* 基準サイズより大きい方を優位にする(小さい方に加算) */
+
+                /* o2 */
+                double o2AreaDiff     = o2AreaNorm   - baseAreaNorm;                        /* 面積差分 */
+                double o2AspectDiff   = o2AspectNorm - baseAspectNorm;                      /* アスペクト比差分 */
+                double o2MoreLargeDiff= (o2.getWidth()*o2.getHeight()== baseArea) ? 0.0 :
+                        (o2.getWidth()*o2.getHeight() < baseArea) ? 0.2 : 0.1;/* 基準サイズより大きい方を優位にする(小さい方に加算) */
+
+                /* 特徴を一元化 */
+                double o1Feature = Math.abs(o1AreaDiff) + Math.abs(o1AspectDiff) + Math.abs(o1MoreLargeDiff);
+                double o2Feature = Math.abs(o2AreaDiff) + Math.abs(o2AspectDiff) + Math.abs(o2MoreLargeDiff);
+
+//                String log0 = String.format(Locale.JAPAN, "ret=%2d[%f{%f + %f + %f}, %f{%f + %f + %f}] | ", Double.compare(o2Feature, o1Feature), o1Feature, Math.abs(o1AreaDiff), Math.abs(o1AspectDiff), Math.abs(o1MoreLargeDiff), o2Feature, Math.abs(o2AreaDiff), Math.abs(o2AspectDiff), Math.abs(o2MoreLargeDiff));
+//                String log1 = String.format(Locale.JAPAN, "(%4d x %4d[%f](%8d)) | ", baseSize.getWidth(), baseSize.getHeight(), ((double)baseSize.getWidth())/baseSize.getHeight(), ((long)baseSize.getWidth())*baseSize.getHeight());
+//                String log2 = String.format(Locale.JAPAN, "::(%4d x %4d[%f](%8d)) ",   o1.getWidth(), o1.getHeight(), ((double)o1.getWidth())/o1.getHeight(), ((long)o1.getWidth())*o1.getHeight());
+//                String log3 = String.format(Locale.JAPAN, "(%4d x %4d[%f](%8d)) | ", o2.getWidth(), o2.getHeight(), ((double)o2.getWidth())/o2.getHeight(), ((long)o2.getWidth())*o2.getHeight());
+//                String log4 = String.format(Locale.JAPAN, "o1-大::%f[%f{%d x %d / %d x %d}-%f{%d x %d / %d x %d}]", Math.abs(o1AreaDiff), o1AreaNorm, o1.getWidth(),o1.getHeight(),maxPreviewSzie.getWidth(),maxPreviewSzie.getHeight(), baseAreaNorm, baseSize.getWidth(), baseSize.getHeight(), maxPreviewSzie.getWidth(),maxPreviewSzie.getHeight());
+//                String log5 = String.format(Locale.JAPAN, "o2-大::%f[%f{%d x %d / %d x %d}-%f{%d x %d / %d x %d}]", Math.abs(o2AreaDiff), o2AreaNorm, o2.getWidth(),o2.getHeight(),maxPreviewSzie.getWidth(),maxPreviewSzie.getHeight(), baseAreaNorm, baseSize.getWidth(), baseSize.getHeight(), maxPreviewSzie.getWidth(),maxPreviewSzie.getHeight());
+//                String log6 = String.format(Locale.JAPAN, "o1-比::%f[%f{(%d / %d) / (%d / %d )} - %f{(%d / %d) / (%d / %d )}]", Math.abs(o1AspectDiff), o1AspectNorm, o1.getWidth(),o1.getHeight(),maxAspectSize.getWidth(),maxAspectSize.getHeight(), baseAspectNorm, baseSize.getWidth(),baseSize.getHeight(),maxAspectSize.getWidth(),maxAspectSize.getHeight());
+//                String log7 = String.format(Locale.JAPAN, "o2-比::%f[%f{(%d / %d) / (%d / %d )} - %f{(%d / %d) / (%d / %d )}]", Math.abs(o2AspectDiff), o2AspectNorm, o2.getWidth(),o2.getHeight(),maxAspectSize.getWidth(),maxAspectSize.getHeight(), baseAspectNorm, baseSize.getWidth(),baseSize.getHeight(),maxAspectSize.getWidth(),maxAspectSize.getHeight());
+//                String log8 = String.format(Locale.JAPAN, "o1-↑::%f", Math.abs(o1MoreLargeDiff));
+//                String log9 = String.format(Locale.JAPAN, "o2-↑::%f", Math.abs(o2MoreLargeDiff));
+//                Log.d("aaaaa",  String.format("%s %s %s %s", log0, log1, log2, log3));
+//                Log.d("aaaaa",  String.format("%s %s %s", log4, log6, log8));
+//                Log.d("aaaaa",  String.format("%s %s %s", log5, log7, log9));
+//                Log.d("aaaaa",  "------------------------------------------------");
+                return Double.compare(o1Feature, o2Feature);
+            }
+        }).collect(Collectors.toList());
+        for(Size aa : aaaaa)
+            Log.d("aaaaa",  String.format("aaaaa 並び替えがちゃんと出来ているか?(%d x %d[%f]) --- %d x %d[%f]", baseSize.getWidth(), baseSize.getHeight(), ((double)baseSize.getWidth())/baseSize.getHeight(), aa.getWidth(), aa.getHeight(), ((double)aa.getWidth())/aa.getHeight()) );
+        /* TODO 削除予定 試しコード ここまで */
+
+        Log.d("aaaaa",  String.format("aaaaa ちゃんとれたか？483 (%d x %d[%f])", suitableCameraPreviewSize.getWidth(), suitableCameraPreviewSize.getHeight(), ((double)suitableCameraPreviewSize.getWidth())/suitableCameraPreviewSize.getHeight()) );
+        return suitableCameraPreviewSize;
+    }
+
+    /* onResume() -> [onSurfaceTextureAvailable()] -> openCamera() -> CameraManager::openCamera() -> onOpened() */
+    /*                                                ↑ ココ                                                   */
+    private void openCamera(String cameraid, int width, int height) {
+        dbglogout(String.format("aaaaa openCamera() %d x %d[%f]", width, height, ((double)width)/height));
+
+        /* Camera Open */
+        CameraManager manager = (CameraManager)mAtivity.getSystemService(Context.CAMERA_SERVICE);
+        try {
+            if( !mCameraOpenCloseSemaphore.tryAcquire(2500, TimeUnit.MILLISECONDS))
+                throw new RuntimeException("Time out waiting to lock camera opening.");
+
+            /* 権限チェック -> 権限なし時はアプリ終了!!(CameraManager::openCamera()をコールする前には必ず必要) */
+            if(ActivityCompat.checkSelfPermission(mAtivity, android.Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                new Throwable().printStackTrace();
+                ErrorDialog.newInstance(getString(R.string.request_permission)).show(getChildFragmentManager(), "Error!!");
+            }
+            manager.openCamera(cameraid, mDeviceStateCallback, mBackgroundHandler);
+        }
+        catch(InterruptedException | CameraAccessException e) {
+            /* 異常が発生したら、例外吐いて終了 */
+            throw new RuntimeException(e);
+        }
+    }
+
+    /***************************************************************************************************************************************************
+     * Preview開始シーケンス
+     * CameraDevice.StateCallback::onOpened() -> createCameraPreviewSession() -> StateCallback::onConfigured() -> CaptureCallback::onCaptureProgressed()
+     ***************************************************************************************************************************************************/
+    private final CameraDevice.StateCallback mDeviceStateCallback = new CameraDevice.StateCallback() {
+        @Override
+        public void onOpened(@NonNull CameraDevice cameraDevice) {
+            /* This method is called when the camera is opened.  We start camera preview here. */
+            mCameraOpenCloseSemaphore.release();
+            mCameraDevice = cameraDevice;
+            createCameraPreviewSession();
+        }
+
+        @Override
+        public void onDisconnected(@NonNull CameraDevice cameraDevice) {
+            mCameraOpenCloseSemaphore.release();
+            cameraDevice.close();
+            mCameraDevice = null;
+        }
+
+        @Override
+        public void onError(@NonNull CameraDevice cameraDevice, int error) {
+            mCameraOpenCloseSemaphore.release();
+            cameraDevice.close();
+            mCameraDevice = null;
+        }
+    };
+
+    /* CameraDevice.StateCallback::onOpened() -> createCameraPreviewSession() -> StateCallback::onConfigured() -> CaptureCallback::onCaptureProgressed() */
+    /*                                            ↑ココ                                                                                                   */
+    private CaptureRequest.Builder mPreviewRequestBuilder;
+    private CaptureRequest mPreviewRequestforStartCameraPreview;
+    private void createCameraPreviewSession() {
+        SurfaceTexture texture = mTextureView.getSurfaceTexture();
+        dbglogout(String.format("aaaaa createCameraPreviewSession() mTextureView %d x %d", mTextureView.getMeasuredWidth(), mTextureView.getMeasuredHeight()));
+        /* デフォルトバッファのサイズに、カメラPreviewのサイズを設定。 */
+        int w = Math.max(mTextureView.getMeasuredWidth(), mTextureView.getMeasuredHeight());
+        int h = Math.min(mTextureView.getMeasuredWidth(), mTextureView.getMeasuredHeight());
+        w = 2560; h = 1280; /* 2:1[2] 完璧OK */
+//        w = 1920; h = 1080; /* 16:9[177777] */
+//        w = 1920; h = 1440; /* 4:3[1.33333] */
+        texture.setDefaultBufferSize(w, h);
+
+        /* SurfaceTexture -> Surface */
+        Surface surface = new Surface(texture);
+
+        /* We set up a CaptureRequest.Builder with the output Surface. */
+        try {
+            mPreviewRequestBuilder = mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
+            mPreviewRequestBuilder.addTarget(surface);
+
+            /* 先にパラメータ生成 */
+            SessionConfiguration sessionConfiguration = new SessionConfiguration(
+                                            SessionConfiguration.SESSION_REGULAR,
+                                            Arrays.asList(new OutputConfiguration(surface)/*, new OutputConfiguration(mImageReader.getSurface())*/),
+                                            Runnable::run,
+                                            mCaptureSessionStateCallback);
+
+            /* カメラプレビュー用 CameraCaptureSessionを開始 */
+            mCameraDevice.createCaptureSession(sessionConfiguration);
+        }
+        catch(CameraAccessException e) {
+            /* 異常が発生したら、例外吐いて終了 */
+            throw new RuntimeException(e);
+        }
+    }
+
+    /* CameraDevice.StateCallback::onOpened() -> createCameraPreviewSession() -> StateCallback::onConfigured() -> CaptureCallback::onCaptureProgressed() */
+    /*                                                                           ↑ココ                                                                                                              */
+    CameraCaptureSession.StateCallback mCaptureSessionStateCallback = new CameraCaptureSession.StateCallback() {
+        @Override
+        public void onConfigured(@NonNull CameraCaptureSession session) {
+            /* The camera is already closed */
+            if (mCameraDevice ==null) return;
+
+            /* When the session is ready, we start displaying the preview. */
+            mCaptureSession = session;
+            try {
+                /* Auto focus should be continuous for camera preview. */
+                mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
+                /* Flash is automatically enabled when necessary. */
+                if(mViewModel.getFlashSupported())
+                    mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON_AUTO_FLASH);
+
+                /* Finally, we start displaying the camera preview. */
+                mPreviewRequestforStartCameraPreview = mPreviewRequestBuilder.build();
+                mCaptureSession.setRepeatingRequest(mPreviewRequestforStartCameraPreview, mCaptureCallback, mBackgroundHandler);
+            }
+            catch (CameraAccessException e) {
+                /* 異常が発生したら、例外吐いて終了 */
+                throw new RuntimeException(e);
+            }
+        }
+
+        @Override public void onConfigureFailed(@NonNull CameraCaptureSession session) { /* 異常が発生したら、例外吐いて終了 */ throw new RuntimeException(session.toString()); }
+    };
+
+    /***************************************************************************************************************************************************
+     * Previewキャプチャ中シーケンス
+     * CaptureCallback::onCaptureProgressed()
+     **************************************************************************************************************************************************/
+    private int mState = STATE_PREVIEW;
+    private static final int STATE_PREVIEW                = 0;
+    private static final int STATE_WAITING_LOCK           = 1;
+    private static final int STATE_WAITING_PRECAPTURE     = 2;
+    private static final int STATE_WAITING_NON_PRECAPTURE = 3;
+    private static final int STATE_PICTURE_TAKEN          = 4;
+    private CameraCaptureSession.CaptureCallback mCaptureCallback = new CameraCaptureSession.CaptureCallback() {
+        private void process(CaptureResult result) {
+            switch (mState) {
+                // We have nothing to do when the camera preview is working normally.
+                case STATE_PREVIEW: {
+                    break;
+                }
+//                case STATE_WAITING_LOCK: {
+//                    Integer afState = result.get(CaptureResult.CONTROL_AF_STATE);
+//                    if (afState == null) {
+//                        captureStillPicture();
+//                    }
+//                    // CONTROL_AE_STATE can be null on some devices
+//                    else if (CaptureResult.CONTROL_AF_STATE_FOCUSED_LOCKED == afState || CaptureResult.CONTROL_AF_STATE_NOT_FOCUSED_LOCKED == afState) {
+//                        Integer aeState = result.get(CaptureResult.CONTROL_AE_STATE);
+//                        if (aeState == null || aeState == CaptureResult.CONTROL_AE_STATE_CONVERGED) {
+//                            mState = STATE_PICTURE_TAKEN;
+//                            captureStillPicture();
+//                        }
+//                        else {
+//                            runPrecaptureSequence();
+//                        }
+//                    }
+//                    break;
+//                }
+//                // CONTROL_AE_STATE can be null on some devices
+//                case STATE_WAITING_PRECAPTURE: {
+//                    Integer aeState = result.get(CaptureResult.CONTROL_AE_STATE);
+//                    if (aeState == null || aeState == CaptureResult.CONTROL_AE_STATE_PRECAPTURE || aeState == CaptureRequest.CONTROL_AE_STATE_FLASH_REQUIRED) {
+//                        mState = STATE_WAITING_NON_PRECAPTURE;
+//                    }
+//                    break;
+//                }
+//                // CONTROL_AE_STATE can be null on some devices
+//                case STATE_WAITING_NON_PRECAPTURE: {
+//                    Integer aeState = result.get(CaptureResult.CONTROL_AE_STATE);
+//                    if (aeState == null || aeState != CaptureResult.CONTROL_AE_STATE_PRECAPTURE) {
+//                        mState = STATE_PICTURE_TAKEN;
+//                        captureStillPicture();
+//                    }
+//                    break;
+//                }
+            }
+        }
+
+        @Override
+        public void onCaptureProgressed(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull CaptureResult partialResult) {
+            process(partialResult);
+        }
+
+        @Override
+        public void onCaptureCompleted(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
+            process(result);
+        }
+    };
+
+    /* CaptureCallback::onCaptureProgressed() -> */
+    /*                                           ↑ココ                                  */
+
+    /**********************************************************************
+     * Handler終了,TextureView終了シーケンス
+     **********************************************************************/
     @Override
     public void onPause() {
         super.onPause();
+
+        Log.d("aaaaa", String.format("aaaaa onPause() mTextureView %d x %d", mTextureView.getMeasuredWidth(), mTextureView.getMeasuredHeight()));
 
         /* stop Camera */
         closeCamera();
@@ -175,76 +490,6 @@ public class MainFragment extends Fragment {
         }
     }
 
-    private void openCamera(int width, int height) {
-        dbglogout(String.format(java.util.Locale.US, "s (%d, %d)", width, height));
-        setUpCameraOutputs(width, height);
-        configureTransform(width, height);
-        Activity activity = getActivity();
-        if(activity == null) {
-            Log.d("aaaaa", "Error! Activity is null!! It became an illegal state inside the app!!");
-            new Throwable().printStackTrace();
-            ErrorDialog.newInstance(getString(R.string.str_illigal_state)).show(getChildFragmentManager(), "Error!!");
-            return;
-        }
-
-        CameraManager manager = (CameraManager)activity.getSystemService(Context.CAMERA_SERVICE);
-        try {
-            if( !mCameraOpenCloseSemaphore.tryAcquire(2500, TimeUnit.MILLISECONDS))
-                throw new RuntimeException("Time out waiting to lock camera opening.");
-
-            /* 権限チェック -> 権限なし時はアプリ終了!!(CameraManager::openCamera()をコールする前には必ず必要) */
-            if(ActivityCompat.checkSelfPermission(getActivity(), android.Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-                Log.d("aaaaa", "Error! permission denied!!");
-                new Throwable().printStackTrace();
-                ErrorDialog.newInstance(getString(R.string.request_permission)).show(getChildFragmentManager(), "Error!!");
-            }
-
-            manager.openCamera(mCameraId, mStateCallback, mBackgroundHandler);
-        }
-        catch (CameraAccessException e) {
-            e.printStackTrace();
-        }
-        catch (InterruptedException e) {
-                throw new RuntimeException("Interrupted while trying to lock camera opening.", e);
-        }
-        dbglogout("e ");
-    }
-
-    private final CameraDevice.StateCallback mStateCallback = new CameraDevice.StateCallback() {
-        @Override
-        public void onOpened(@NonNull CameraDevice cameraDevice) {
-            dbglogout("s onOpened(93)");
-            /* This method is called when the camera is opened.  We start camera preview here. */
-            mCameraOpenCloseSemaphore.release();
-            mCameraDevice = cameraDevice;
-            createCameraPreviewSession();
-            dbglogout("e onOpened(98)");
-        }
-
-        @Override
-        public void onDisconnected(@NonNull CameraDevice cameraDevice) {
-            dbglogout("s onDisconnected(103)");
-            mCameraOpenCloseSemaphore.release();
-            cameraDevice.close();
-            mCameraDevice = null;
-            dbglogout("e onDisconnected(107)");
-        }
-
-        @Override
-        public void onError(@NonNull CameraDevice cameraDevice, int error) {
-            dbglogout("s onError(112)");
-            mCameraOpenCloseSemaphore.release();
-            cameraDevice.close();
-            mCameraDevice = null;
-            dbglogout("e onError(120)");
-            throw new RuntimeException(String.format(java.util.Locale.US, "Error occurred!! CameraDevice.State errorcode=%x", error));
-        }
-
-    };
-
-    /**
-     * Closes the current {@link CameraDevice}.
-     */
     private void closeCamera() {
         try {
             mCameraOpenCloseSemaphore.acquire();
@@ -265,269 +510,9 @@ public class MainFragment extends Fragment {
         }
     }
 
-	/**
-     * Sets up member variables related to camera.
-     *
-     * @param width  The width of available size for camera preview
-     * @param height The height of available size for camera preview
-     */
-    private void setUpCameraOutputs(int width, int height) {
-        dbglogout(String.format(java.util.Locale.US, "s (%d, %d)", width, height));
-        Activity activity = getActivity();
-        if(activity == null)
-            throw new RuntimeException("illegal state!! activity is null!!");
-        CameraManager manager = (CameraManager)activity.getSystemService(Context.CAMERA_SERVICE);
-        try {
-            for(String cameraId : manager.getCameraIdList()) {
-                CameraCharacteristics characteristics = manager.getCameraCharacteristics(cameraId);
-
-                /* We don't use a front facing camera in this app. */
-                Integer facing = characteristics.get(CameraCharacteristics.LENS_FACING);
-                if(facing != null && facing == CameraCharacteristics.LENS_FACING_FRONT)
-                    continue;
-
-                /* Get streamConfig map */
-                StreamConfigurationMap map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
-                if(map == null)
-                    continue;
-
-                /* Find out if we need to swap dimension to get the preview size relative to sensor coordinate. */
-                int displayRotation = activity.getWindowManager().getDefaultDisplay().getRotation();
-                /* noinspection ConstantConditions */
-
-                Point displaySize = new Point();
-                activity.getWindowManager().getDefaultDisplay().getSize(displaySize);
-                int rotatedPreviewWidth = width;
-                int rotatedPreviewHeight = height;
-                int maxPreviewWidth = displaySize.x;
-                int maxPreviewHeight = displaySize.y;
-
-                if(maxPreviewWidth > MAX_PREVIEW_WIDTH)
-                    maxPreviewWidth = MAX_PREVIEW_WIDTH;
-
-                if(maxPreviewHeight > MAX_PREVIEW_HEIGHT)
-                    maxPreviewHeight = MAX_PREVIEW_HEIGHT;
-
-                /* Danger, W.R.!
-                   Attempting to use too large a preview size could exceed the camera bus' bandwidth limitation, resulting in gorgeous previews but the storage of garbage capture data. */
-                mPreviewSize = chooseOptimalSize(map.getOutputSizes(SurfaceTexture.class), rotatedPreviewWidth, rotatedPreviewHeight, maxPreviewWidth, maxPreviewHeight, new Size(16, 9));
-                dbglogout(String.format(java.util.Locale.US, "aaaaa mPreviewSize -size %dx%d", mPreviewSize.getWidth(), mPreviewSize.getHeight()));
-
-                /* We fit the aspect ratio of TextureView to the size of preview we picked. */
-                int orientation = getResources().getConfiguration().orientation;
-                if(orientation == Configuration.ORIENTATION_LANDSCAPE/*horizontal*/) {
-                    mTextureView.setAspectRatio(mPreviewSize.getWidth(), mPreviewSize.getHeight());
-                }
-                else {/*vertical*/
-                    mTextureView.setAspectRatio(mPreviewSize.getHeight(), mPreviewSize.getWidth());
-                }
-                dbglogout(String.format(java.util.Locale.US, "aaaaa TextureView setUpCameraOutputs() -size (%d, %d) ", mTextureView.getWidth(), mTextureView.getHeight()));
-
-                // Check if the flash is supported.
-                Boolean available = characteristics.get(CameraCharacteristics.FLASH_INFO_AVAILABLE);
-                mFlashSupported = available == null ? false : available;
-
-                mCameraId = cameraId;
-                dbglogout("e ");
-                return;
-            }
-        }
-        catch(CameraAccessException e) {
-            e.printStackTrace();
-        }
-        catch(NullPointerException e) {
-            Log.d("aaaaa", "Error! permission denied !!");
-            e.printStackTrace();
-            ErrorDialog.newInstance(getString(R.string.camera_error)).show(getChildFragmentManager(), FRAGMENT_DIALOG);
-        }
-        dbglogout("e ");
-    }
-
-    /**
-     * Given {@code choices} of {@code Size}s supported by a camera, choose the smallest one that is at least as large as the respective texture view size,
-     * and that is at most as large as the respective max size, and whose aspect ratio matches with the specified value.
-     * If such size doesn't exist, choose the largest one that is at most as large as the respective max size, and whose aspect ratio matches with the specified value.
-     *
-     * @param choices           The list of sizes that the camera supports for the intended output class
-     * @param textureViewWidth  The width of the texture view relative to sensor coordinate
-     * @param textureViewHeight The height of the texture view relative to sensor coordinate
-     * @param maxWidth          The maximum width that can be chosen
-     * @param maxHeight         The maximum height that can be chosen
-     * @param aspectRatio       The aspect ratio
-     * @return The optimal {@code Size}, or an arbitrary one if none were big enough
-     */
-    private static Size chooseOptimalSize(Size[] choices, int textureViewWidth, int textureViewHeight, int maxWidth, int maxHeight, Size aspectRatio) {
-        dbglogout(String.format(java.util.Locale.US, "s (textureView(%d, %d), max(%d, %d)) aspectRatio(%d, %d)", textureViewWidth, textureViewHeight, maxWidth, maxHeight, aspectRatio.getWidth(), aspectRatio.getHeight()));
-        /* Collect the supported resolutions that are at least as big as the preview Surface */
-        List<Size> bigEnough = new ArrayList<>();
-        /* Collect the supported resolutions that are smaller than the preview Surface */
-        List<Size> notBigEnough = new ArrayList<>();
-        int w = aspectRatio.getWidth();
-        int h = aspectRatio.getHeight();
-        for(Size option : choices) {
-            if(option.getWidth() <= maxWidth && option.getHeight() <= maxHeight && option.getHeight() == option.getWidth() * h / w) {
-                if(option.getWidth() >= textureViewWidth && option.getHeight() >= textureViewHeight) {
-                    dbglogout(String.format(java.util.Locale.US, "aaaaa camara-size %dx%d 大判定", option.getWidth(), option.getHeight()));
-                    bigEnough.add(option);
-                }
-                else {
-                    dbglogout(String.format(java.util.Locale.US, "aaaaa camara-size %dx%d not大判定", option.getWidth(), option.getHeight()));
-                    notBigEnough.add(option);
-                }
-            }
-            else {
-                if( !(option.getWidth() <= maxWidth))
-                    dbglogout(String.format(java.util.Locale.US, "aaaaa camara-size %dx%d 対象外(Width is ng %d <= max(%d))", option.getWidth(), option.getHeight(), option.getWidth(), maxWidth));
-                else if( !(option.getHeight() <= maxHeight))
-                    dbglogout(String.format(java.util.Locale.US, "aaaaa camara-size %dx%d 対象外(Height is ng %d <= max(%d))", option.getWidth(), option.getHeight(), option.getHeight(), maxHeight));
-                else if( !(option.getHeight() == option.getWidth() * h / w))
-                    dbglogout(String.format(java.util.Locale.US, "aaaaa camara-size %dx%d 対象外(Aspect not ==. %d != %d)", option.getWidth(), option.getHeight(), option.getHeight(), option.getWidth() * h / w));
-            }
-        }
-
-        /* Pick the smallest of those big enough. If there is no one big enough, pick the largest of those not big enough. */
-        if(bigEnough.size() > 0) {
-            dbglogout("e ");
-            return Collections.min(bigEnough, new CompareSizesByArea());
-        }
-        else if(notBigEnough.size() > 0) {
-            dbglogout("e ");
-            return Collections.max(notBigEnough, new CompareSizesByArea());
-        }
-        else {
-            Log.e("aaaaa", "Couldn't find any suitable preview size");
-            dbglogout("e ");
-            return choices[0];
-        }
-    }
-
-    /**
-     * Configures the necessary {@link android.graphics.Matrix} transformation to `mTextureView`.
-     * This method should be called after the camera preview size is determined in setUpCameraOutputs and also the size of `mTextureView` is fixed.
-     *
-     * @param viewWidth  The width of `mTextureView`
-     * @param viewHeight The height of `mTextureView`
-     */
-    private void configureTransform(int viewWidth, int viewHeight) {
-        dbglogout(String.format(java.util.Locale.US, "s (View(%d, %d)", viewWidth, viewHeight));
-        Activity activity = getActivity();
-        if(null == mTextureView || null == mPreviewSize || null == activity)
-            return;
-
-        int rotation = activity.getWindowManager().getDefaultDisplay().getRotation();
-        Matrix matrix = new Matrix();
-        RectF viewRect = new RectF(0, 0, viewWidth, viewHeight);
-        RectF bufferRect = new RectF(0, 0, mPreviewSize.getHeight(), mPreviewSize.getWidth());
-        float centerX = viewRect.centerX();
-        float centerY = viewRect.centerY();
-        if(Surface.ROTATION_90 == rotation || Surface.ROTATION_270 == rotation) {
-            bufferRect.offset(centerX - bufferRect.centerX(), centerY - bufferRect.centerY());
-            matrix.setRectToRect(viewRect, bufferRect, Matrix.ScaleToFit.FILL);
-            float scale = Math.max((float) viewHeight / mPreviewSize.getHeight(), (float) viewWidth / mPreviewSize.getWidth());
-            matrix.postScale(scale, scale, centerX, centerY);
-            matrix.postRotate(90 * (rotation - 2), centerX, centerY);
-        }
-        else if (Surface.ROTATION_180 == rotation) {
-            matrix.postRotate(180, centerX, centerY);
-        }
-        mTextureView.setTransform(matrix);
-        dbglogout(String.format(java.util.Locale.US, "aaaaa TextureView configureTransform() -size (%d, %d) ", mTextureView.getWidth(), mTextureView.getHeight()));
-        dbglogout("e ");
-    }
-
-    /**
-     * Creates a new {@link CameraCaptureSession} for camera preview.
-     */
-    private void createCameraPreviewSession() {
-        dbglogout("s ");
-        try {
-            SurfaceTexture texture = mTextureView.getSurfaceTexture();
-            dbglogout(String.format(java.util.Locale.US, "aaaaa TextureView createCameraPreviewSession() -size (%d, %d) ", mTextureView.getWidth(), mTextureView.getHeight()));
-            assert texture != null;
-
-            /* We configure the size of default buffer to be the size of camera preview we want. */
-            texture.setDefaultBufferSize(mPreviewSize.getWidth(), mPreviewSize.getHeight());
-
-            /* This is the output Surface we need to start preview. */
-            Surface surface = new Surface(texture);
-
-            /* We set up a CaptureRequest.Builder with the output Surface. */
-            mPreviewRequestBuilder = mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
-            mPreviewRequestBuilder.addTarget(surface);
-
-            /* Here, we create a CameraCaptureSession for camera preview. */
-            mCameraDevice.createCaptureSession(
-                    Arrays.asList(surface),
-                    new CameraCaptureSession.StateCallback() {
-                        @Override
-                        public void onConfigured(@NonNull CameraCaptureSession cameraCaptureSession) {
-                            dbglogout("s onConfigured(623)");
-                            /* The camera is already closed */
-                            if (null == mCameraDevice)
-                                return;
-
-                            /* When the session is ready, we start displaying the preview. */
-                            mCaptureSession = cameraCaptureSession;
-                            try {
-                                /* Auto focus should be continuous for camera preview. */
-                                mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
-                                /* Flash is automatically enabled when necessary. */
-                                if(mFlashSupported)
-                                    mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON_AUTO_FLASH);
-
-                                /* Finally, we start displaying the camera preview. */
-                                mPreviewRequest = mPreviewRequestBuilder.build();
-                                mCaptureSession.setRepeatingRequest(mPreviewRequest, null, null);
-                            }
-                            catch (CameraAccessException e) {
-                                e.printStackTrace();
-                            }
-                            dbglogout("e onConfigured(643)");
-                        }
-
-                        @Override
-                        public void onConfigureFailed(@NonNull CameraCaptureSession cameraCaptureSession) {
-                            dbglogout("s ");
-                            showToast("Failed");
-                            dbglogout("e ");
-                        }
-                    },
-                    null
-            );
-        }
-        catch (CameraAccessException e) {
-            e.printStackTrace();
-        }
-        dbglogout("e ");
-    }
-
-    private void showToast(final String text) {
-        final Activity activity = getActivity();
-        if(activity == null)
-            return;
-        activity.runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                Toast.makeText(activity, text, Toast.LENGTH_SHORT).show();
-            }
-        });
-    }
-
-    /**
-     * Compares two {@code Size}s based on their areas.
-     */
-    static class CompareSizesByArea implements Comparator<Size> {
-        @Override
-        public int compare(Size lhs, Size rhs) {
-            /* We cast here to ensure the multiplications won't overflow */
-            return Long.signum((long)lhs.getWidth() * lhs.getHeight() - (long)rhs.getWidth() * rhs.getHeight());
-        }
-    }
-
-    /**
-     * ErrorDialog class
-     */
-    private static final String FRAGMENT_DIALOG = "dialog";
+    /**************************************
+     * Utils
+     * ************************************/
     public static class ErrorDialog extends DialogFragment {
         private static final String ARG_MESSAGE = "message";
         public static ErrorDialog newInstance(String message) {
