@@ -11,3 +11,14 @@ TextureViewと、CameraPreviewのサイズが合ってないとき、TextureView
 ※回転する設定でも、問題ないはず(確認してないけど)。
 
 - TextureViewのサイズは、画面サイズと同じ。
+``` fragment_main.xml
+    <TextureView
+        android:id="@+id/tvw_preview"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        tools:ignore="RelativeOverlap" />
+```
+※match_parentで、領域いっぱいになる様にしている。
+※Pixel 4aだと、1080 x 2340。
+
+
