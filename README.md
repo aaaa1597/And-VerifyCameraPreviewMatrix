@@ -13,4 +13,6 @@ TextureViewと、CameraPreviewのサイズが合ってないとき、TextureView
 	・
 }
 ```
+回転する様に設定しても、問題ないはず(確認してないけど)。
+
 TextureViewのサイズは、画面サイズと同じ。
