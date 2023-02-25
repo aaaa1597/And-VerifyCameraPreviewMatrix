@@ -2,7 +2,10 @@
 TextureViewと、CameraPreviewのサイズが合ってないとき、TextureViewに、何の値のMatrixを設定すればいいのかを検証したコード。
 
 画面は、縦画面固定。
-``` C++:メモリリーク検出(VisuslStudioのみ)
+``` AndroidManifest.xml
+	・
+	・
+	・
         <activity
             android:name=".MainActivity"
             android:screenOrientation="portrait"
@@ -13,6 +16,6 @@ TextureViewと、CameraPreviewのサイズが合ってないとき、TextureView
 	・
 }
 ```
-回転する様に設定しても、問題ないはず(確認してないけど)。
+※回転する様に設定しても、問題ないはず(確認してないけど)。
 
 TextureViewのサイズは、画面サイズと同じ。
