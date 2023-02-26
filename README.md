@@ -1,6 +1,13 @@
 # And-VerifyCameraPreviewMatrix
 TextureViewと、CameraPreviewのサイズが合ってないとき、TextureViewに、何の値のMatrixを設定すればいいのかを検証したコード。
 
+#### 行列実装前(歪み解決前)の残念なコード
+![image](https://user-images.githubusercontent.com/27885482/221391823-17c5c436-8bd1-4856-abc0-99d6339adbdd.png)
+↑ スマホを縦持ちすると、縦長の円になる。　　　　　　　　　　↑ スマホを横持ちすると、横長の円になる。
+
+#### 行列実装後(歪み解決後)のコード
+
+
 - キモはこんな感じ。
     1. 画面は、縦画面固定。
     ``` AndroidManifest.xml
