@@ -24,7 +24,6 @@ TextureViewと、CameraPreviewのサイズが合ってないとき、TextureView
 - カメラのサポートサイズから2560 x 1280[アスペクト比2.000000]を選ぶ。
 ``` fragment_main.xml
 ・
-・
 2560 x 1280[アスペクト比2.000000]
 ・
 ・
