@@ -42,6 +42,6 @@ TextureViewと、CameraPreviewのサイズが合ってないとき、TextureView
 
     5. カメラにプレビューサイズを設定する。
     ``` java
-        SurfaceTexture texture = TextureView.getSurfaceTexture();
-        texture.setDefaultBufferSize(カメラ横サイズ, カメラ縦サイズ);
+    SurfaceTexture texture = TextureView.getSurfaceTexture();
+    texture.setDefaultBufferSize(カメラ横サイズ, カメラ縦サイズ);
     ```
