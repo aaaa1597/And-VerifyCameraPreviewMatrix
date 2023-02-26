@@ -2,7 +2,7 @@
 TextureViewと、CameraPreviewのサイズが合ってないとき、TextureViewに、何の値のMatrixを設定すればいいのかを検証したコード。
 
 - キモはこんな感じ。
-  1. 画面は、縦画面固定。
+   1. 画面は、縦画面固定。
   ``` AndroidManifest.xml
         <activity
             android:name=".MainActivity"
@@ -11,7 +11,7 @@ TextureViewと、CameraPreviewのサイズが合ってないとき、TextureView
   ```
   ※回転する設定でも、問題ないはず(確認してないけど)。
 
-  1. TextureViewのサイズは、画面サイズと同じ。
+   1. TextureViewのサイズは、画面サイズと同じ。
   ``` fragment_main.xml
     <TextureView
         android:id="@+id/tvw_preview"
@@ -22,7 +22,7 @@ TextureViewと、CameraPreviewのサイズが合ってないとき、TextureView
   ※match_parentで、領域いっぱいになる様にしている。<br/>
   ※Pixel 4aだと、1080 x 2340[アスペクト比:2.166667]。
 
-  1. カメラのサポートサイズからTextureViewのサイズとアスペクト比に一番近いカメラサイズを選ぶ。
+   1. カメラのサポートサイズからTextureViewのサイズとアスペクト比に一番近いカメラサイズを選ぶ。
   ``` fragment_main.xml
   ・
   2560 x 1280[アスペクト比2.000000]
