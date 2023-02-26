@@ -3,10 +3,14 @@ TextureViewと、CameraPreviewのサイズが合ってないとき、TextureView
 
 #### 行列実装前(歪み解決前)の残念なコード
 ![image](https://user-images.githubusercontent.com/27885482/221391823-17c5c436-8bd1-4856-abc0-99d6339adbdd.png)
-↑ スマホを縦持ちすると、縦長の円になる。　　　　　　　　　　↑ スマホを横持ちすると、横長の円になる。
+↑ スマホを縦持ちすると、縦長の円になる。　　　　　　　　　　　　　　　↑ スマホを横持ちすると、横長の円になる。
 
 #### 行列実装後(歪み解決後)のコード
-
+![image](https://user-images.githubusercontent.com/27885482/221392099-56989ca7-6384-4235-9997-a0c6b7a78d11.png)
+↑ スマホを縦持ちにしようが、横持ちにしようが、真円になった。完璧!!
+<br/>
+<br/>
+<br/>
 
 - キモはこんな感じ。
     1. 画面は、縦画面固定。
