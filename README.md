@@ -21,6 +21,7 @@ TextureViewと、CameraPreviewのサイズが合ってないとき、TextureView
     ```
     ※match_parentで、領域いっぱいになる様にしている。<br/>
     ※Pixel 4aだと、1080 x 2340[アスペクト比:2.166667]。
+    ※Xperia5だと、1080 x 2520[アスペクト比:2.333333]。
 
     3. カメラのサポートサイズからTextureViewのサイズとアスペクト比に一番近いカメラサイズを選ぶ。
     ``` fragment_main.xml
@@ -30,6 +31,7 @@ TextureViewと、CameraPreviewのサイズが合ってないとき、TextureView
     ・
     ```
     ※Pixel 4aだと、2560 x 1280[アスペクト比2.000000]。
+    ※Xperia5だと、2520 x 1080[アスペクト比:2.333333]。
 
     4. カメラサイズとTextureViewサイズの歪みを補正する。
     ``` java
