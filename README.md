@@ -30,3 +30,18 @@ TextureViewと、CameraPreviewのサイズが合ってないとき、TextureView
     ・
     ```
     ※Pixel 4aだと、2560 x 1280[アスペクト比2.000000]。
+
+    4. カメラサイズとTextureViewサイズの歪みを補正する。
+    ``` java
+    TextureViewアスペクト比 = TextureView.getWidth() / TextureView.getHeight() ← 実際は縦画面固定なので、入れ替える。
+    カメラアスペクト比 = カメラ横サイズ / カメラ縦サイズ
+    Matrix matrix = new Matrix();
+    matrix.setScale(TextureViewアスペクト比/カメラアスペクト比, 1);
+    mTextureView.setTransform(matrix);
+    ```
+
+    5. カメラにプレビューサイズを設定する。
+    ``` java
+        SurfaceTexture texture = TextureView.getSurfaceTexture();
+        texture.setDefaultBufferSize(カメラ横サイズ, カメラ縦サイズ);
+    ```
